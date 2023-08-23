@@ -225,26 +225,15 @@ public class LegacyUserStorageProvider
 	}
 
 	private UserModel mapUser(RealmModel realm, ResultSet rs) throws SQLException {
-		String username = rs.getString("username");
-		String email = rs.getString("email");
-		String firstName = rs.getString("firstName");
-		String lastName = rs.getString("lastName");
-		Date birthDate = rs.getDate("birthDate");
-		String displayLanguage = rs.getString("displayLanguage");
-		String language = rs.getString("language");
-		String languages = rs.getString("languages");
-		boolean admin = rs.getBoolean("admin");
-		// ... [map other attributes as needed]
-
-		LegacyUser user = new LegacyUser.Builder(session, realm, model, username)
-				.email(email)
-				.firstName(firstName)
-				.lastName(lastName)
-				.birthDate(birthDate)
-				.displayLanguage(displayLanguage)
-				.language(language)
-				.languages(languages)
-				.admin(admin)
+		LegacyUser user = new LegacyUser.Builder(session, realm, model, rs.getString("username"))
+				.email(rs.getString("email"))
+				.firstName(rs.getString("firstName"))
+				.lastName(rs.getString("lastName"))
+				.birthDate(rs.getString("birthDate"))
+				.displayLanguage(rs.getString("displayLanguage"))
+				.language(rs.getString("language"))
+				.languages(rs.getString("languages"))
+				.admin(rs.getString("admin"))
 				.build();
 
 		return user;
