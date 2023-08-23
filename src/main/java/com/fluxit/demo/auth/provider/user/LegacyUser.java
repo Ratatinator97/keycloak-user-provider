@@ -18,16 +18,26 @@ public class LegacyUser extends AbstractUserAdapter {
 	private final String firstName;
 	private final String lastName;
 	private final Date birthDate;
+	private final String displayLanguage;
+	private final String language;
+	private final String languages;
+	private final boolean admin;
+
+	// Other attributes can be added as needed...
 
 	private LegacyUser(KeycloakSession session, RealmModel realm, ComponentModel storageProviderModel, String username,
-			String email, String firstName, String lastName, Date birthDate) {
+			String email, String firstName, String lastName, Date birthDate, String displayLanguage, String language,
+			String languages, boolean admin) {
 		super(session, realm, storageProviderModel);
 		this.username = username;
 		this.email = email;
 		this.firstName = firstName;
 		this.lastName = lastName;
 		this.birthDate = birthDate;
-
+		this.displayLanguage = displayLanguage;
+		this.language = language;
+		this.languages = languages;
+		this.admin = admin;
 	}
 
 	@Override
@@ -54,6 +64,22 @@ public class LegacyUser extends AbstractUserAdapter {
 		return birthDate;
 	}
 
+	public String getDisplayLanguage() {
+		return displayLanguage;
+	}
+
+	public String getLanguage() {
+		return language;
+	}
+
+	public String getLanguages() {
+		return languages;
+	}
+
+	public boolean isAdmin() {
+		return admin;
+	}
+
 	@Override
 	public Map<String, List<String>> getAttributes() {
 		MultivaluedHashMap<String, String> attributes = new MultivaluedHashMap<>();
@@ -62,6 +88,11 @@ public class LegacyUser extends AbstractUserAdapter {
 		attributes.add(UserModel.FIRST_NAME, getFirstName());
 		attributes.add(UserModel.LAST_NAME, getLastName());
 		attributes.add("birthDate", getBirthDate().toString());
+		attributes.add("displayLanguage", getDisplayLanguage());
+		attributes.add("language", getLanguage());
+		attributes.add("languages", getLanguages());
+		attributes.add("admin", Boolean.toString(isAdmin()));
+		// Add other attributes as needed...
 		return attributes;
 	}
 
@@ -74,6 +105,10 @@ public class LegacyUser extends AbstractUserAdapter {
 		private String firstName;
 		private String lastName;
 		private Date birthDate;
+		private String displayLanguage;
+		private String language;
+		private String languages;
+		private boolean admin;
 
 		Builder(KeycloakSession session, RealmModel realm, ComponentModel storageProviderModel, String username) {
 			this.session = session;
@@ -102,10 +137,29 @@ public class LegacyUser extends AbstractUserAdapter {
 			return this;
 		}
 
+		LegacyUser.Builder displayLanguage(String displayLanguage) {
+			this.displayLanguage = displayLanguage;
+			return this;
+		}
+
+		LegacyUser.Builder language(String language) {
+			this.language = language;
+			return this;
+		}
+
+		LegacyUser.Builder languages(String languages) {
+			this.languages = languages;
+			return this;
+		}
+
+		LegacyUser.Builder admin(boolean admin) {
+			this.admin = admin;
+			return this;
+		}
+
 		LegacyUser build() {
 			return new LegacyUser(session, realm, storageProviderModel, username, email, firstName, lastName,
-					birthDate);
-
+					birthDate, displayLanguage, language, languages, admin);
 		}
 	}
 }

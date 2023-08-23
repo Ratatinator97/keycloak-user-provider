@@ -190,7 +190,7 @@ public class LegacyUserStorageProvider
 		log.info("getUserByUsername({})", username);
 		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
 			PreparedStatement st = c.prepareStatement(
-					"select username, firstName, lastName, email, birthDate from users where username = ?");
+					"select username, firstName, lastName, email, birthDate, displayLanguage, language, languages, admin from users where username = ?");
 			st.setString(1, username);
 			st.execute();
 			ResultSet rs = st.getResultSet();
@@ -204,12 +204,13 @@ public class LegacyUserStorageProvider
 		}
 	}
 
+
 	@Override
 	public UserModel getUserByEmail(String email, RealmModel realm) {
 		log.info("getUserByEmail({})", email);
 		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
 			PreparedStatement st = c.prepareStatement(
-					"select username, firstName,lastName, email, birthDate from users where email = ?");
+					"select username, firstName, lastName, email, birthDate, displayLanguage, language, languages, admin from users where email = ?");
 			st.setString(1, email);
 			st.execute();
 			ResultSet rs = st.getResultSet();
@@ -224,12 +225,28 @@ public class LegacyUserStorageProvider
 	}
 
 	private UserModel mapUser(RealmModel realm, ResultSet rs) throws SQLException {
-		LegacyUser user = new LegacyUser.Builder(session, realm, model, rs.getString("username"))
-				.email(rs.getString("email"))
-				.firstName(rs.getString("firstName"))
-				.lastName(rs.getString("lastName"))
-				.birthDate(rs.getDate("birthDate"))
+		String username = rs.getString("username");
+		String email = rs.getString("email");
+		String firstName = rs.getString("firstName");
+		String lastName = rs.getString("lastName");
+		Date birthDate = rs.getDate("birthDate");
+		String displayLanguage = rs.getString("displayLanguage");
+		String language = rs.getString("language");
+		String languages = rs.getString("languages");
+		boolean admin = rs.getBoolean("admin");
+		// ... [map other attributes as needed]
+
+		LegacyUser user = new LegacyUser.Builder(session, realm, model, username)
+				.email(email)
+				.firstName(firstName)
+				.lastName(lastName)
+				.birthDate(birthDate)
+				.displayLanguage(displayLanguage)
+				.language(language)
+				.languages(languages)
+				.admin(admin)
 				.build();
+
 		return user;
 	}
 
