@@ -59,23 +59,6 @@ public class LegacyUserStorageProviderFactory implements UserStorageProviderFact
 						"Validation Query", ProviderConfigProperty.STRING_TYPE,
 						properties.get("config.key.validation.query"), null);
 				
-				// Adding properties for the new attributes from user.entity.ts
-				builder.property("config.key.displayLanguage", "Display Language",
-						"Display Language", ProviderConfigProperty.STRING_TYPE,
-						properties.get("config.key.displayLanguage"), null);
-				
-				builder.property("config.key.language", "Language",
-						"Language", ProviderConfigProperty.STRING_TYPE,
-						properties.get("config.key.language"), null);
-				
-				builder.property("config.key.languages", "Languages",
-						"Languages", ProviderConfigProperty.STRING_TYPE,
-						properties.get("config.key.languages"), null);
-				
-				builder.property("config.key.admin", "Admin",
-						"Admin", ProviderConfigProperty.BOOLEAN_TYPE,
-						properties.get("config.key.admin"), null);
-				
 				configMetadata = builder.build();
 				
 			} catch (IOException ex) {
