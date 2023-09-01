@@ -4,17 +4,34 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Date;
 
 import org.keycloak.component.ComponentModel;
 import org.keycloak.credential.CredentialInput;
 import org.keycloak.credential.CredentialInputValidator;
+import org.keycloak.credential.CredentialModel;
+import org.keycloak.credential.CredentialProvider;
+import org.keycloak.credential.PasswordCredentialProvider;
+import org.keycloak.credential.UserCredentialStore;
+import org.keycloak.credential.hash.PasswordHashProvider;
+import org.keycloak.credential.hash.Pbkdf2PasswordHashProvider;
+import org.keycloak.credential.hash.Pbkdf2Sha512PasswordHashProviderFactory;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.SubjectCredentialManager;
+import org.keycloak.models.UserCredentialManager;
+import org.keycloak.models.UserCredentialModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.credential.PasswordCredentialModel;
+import org.keycloak.models.credential.dto.PasswordCredentialData;
+import org.keycloak.models.credential.dto.PasswordSecretData;
+import org.keycloak.storage.DatastoreProvider;
 import org.keycloak.storage.StorageId;
+import org.keycloak.storage.UserStoragePrivateUtil;
 import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.user.UserLookupProvider;
+import org.keycloak.storage.user.UserRegistrationProvider;
+import org.keycloak.storage.UserStorageUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,7 +91,59 @@ public class LegacyUserStorageProvider
 			if (rs.next()) {
 				log.info("bcryptCheck({},{})", credentialInput.getChallengeResponse(), rs.getString(1));
 				log.info("bcryptCheckResult({})", bcryptCheck(credentialInput.getChallengeResponse(), rs.getString(1)));
-				return bcryptCheck(credentialInput.getChallengeResponse(), rs.getString(1));
+				boolean isValid = bcryptCheck(credentialInput.getChallengeResponse(), rs.getString(1));
+				if (!isValid) {
+					log.info("isValid User not valid: {}", username);
+					return isValid;
+				}
+				log.info("isValid User found: {}", username);
+				// Store the user back to Keycloak.
+				UserModel local = UserStoragePrivateUtil.userLocalStorage(session).getUserByUsername(realm, user.getUsername());
+				if (local != null) {
+					log.info("isValid User found in Keycloak: {}", username);
+					log.info("isValid Not importing the new user");
+					return isValid;
+				}
+				log.info("isValid User not found in Keycloak: {}", username);
+				// If user is valid, create the user in Keycloak if they don't exist
+				local = UserStoragePrivateUtil.userLocalStorage(session).addUser(realm, user.getUsername());
+				log.info("isValid User created in Keycloak: {}", username);
+				// local.setFederationLink(model.getId());
+				// Here, you can add logic to create the user in Keycloak
+				local.setEnabled(true); // Enable the user
+				local.setEmail(username); // Set a default email
+				local.setEmailVerified(true);
+				local.setSingleAttribute("legacy_user", "true"); // Add an attribute to mark legacy users
+				PasswordCredentialProvider passwordProvider = (PasswordCredentialProvider) session.getProvider(CredentialProvider.class, "keycloak-password");
+				passwordProvider.createCredential(realm, local, credentialInput.getChallengeResponse());
+				/* 
+				Pbkdf2PasswordHashProvider encoder = new Pbkdf2PasswordHashProvider(
+					Pbkdf2Sha512PasswordHashProviderFactory.ID,
+					Pbkdf2Sha512PasswordHashProviderFactory.PBKDF2_ALGORITHM,
+					Pbkdf2Sha512PasswordHashProviderFactory.DEFAULT_ITERATIONS,
+					512 // Tried setting this to 512, as well, no dice.
+        		);
+				log.info("isValid password: {}", credentialInput.getChallengeResponse());
+				PasswordCredentialModel pcm = encoder.encodedCredential(credentialInput.getChallengeResponse(), Pbkdf2Sha512PasswordHashProviderFactory.DEFAULT_ITERATIONS);
+				
+				Date date = new Date();
+
+				if (!local.credentialManager().isConfiguredFor(credentialInput.getType())) {
+					try {
+						local.credentialManager().createStoredCredential(pcm);
+						log.info("isValid pcm created: {}", pcm);
+						encoder.verify(credentialInput.getChallengeResponse(), pcm);
+						log.info("isValid pcm verified: {}", pcm);
+						log.info("isValid pcm secretData: {}", pcm.getSecretData());
+						log.info("isValid pcm credentialData: {}", pcm.getType());
+						log.info("isValid pcm credentialData: {}", pcm.getCredentialData());
+						pcm.
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				*/
+				return isValid;
 			} else {
 				log.info("isValid User not found: {}", username);
 				return false;
