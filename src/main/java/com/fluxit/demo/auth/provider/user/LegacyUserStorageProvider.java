@@ -4,34 +4,46 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.sql.Statement;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
+import java.util.Date;
 
 import org.keycloak.component.ComponentModel;
 import org.keycloak.credential.CredentialInput;
 import org.keycloak.credential.CredentialInputValidator;
-import org.keycloak.models.GroupModel;
+import org.keycloak.credential.CredentialModel;
+import org.keycloak.credential.CredentialProvider;
+import org.keycloak.credential.PasswordCredentialProvider;
+import org.keycloak.credential.UserCredentialStore;
+import org.keycloak.credential.hash.PasswordHashProvider;
+import org.keycloak.credential.hash.Pbkdf2PasswordHashProvider;
+import org.keycloak.credential.hash.Pbkdf2Sha512PasswordHashProviderFactory;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.models.SubjectCredentialManager;
+import org.keycloak.models.UserCredentialManager;
+import org.keycloak.models.UserCredentialModel;
 import org.keycloak.models.UserModel;
 import org.keycloak.models.credential.PasswordCredentialModel;
+import org.keycloak.models.credential.dto.PasswordCredentialData;
+import org.keycloak.models.credential.dto.PasswordSecretData;
+import org.keycloak.storage.DatastoreProvider;
 import org.keycloak.storage.StorageId;
+import org.keycloak.storage.UserStoragePrivateUtil;
 import org.keycloak.storage.UserStorageProvider;
 import org.keycloak.storage.user.UserLookupProvider;
-import org.keycloak.storage.user.UserQueryProvider;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.keycloak.storage.user.UserRegistrationProvider;
+import org.keycloak.storage.UserStorageUtil;
+import org.jboss.logging.Logger;
+
+import com.fluxit.demo.auth.provider.LegacyUserEntity;
+
+import at.favre.lib.crypto.bcrypt.BCrypt;
 
 public class LegacyUserStorageProvider
-		implements UserStorageProvider, UserLookupProvider, CredentialInputValidator, UserQueryProvider {
+		implements UserStorageProvider, UserLookupProvider, CredentialInputValidator {
 
-	private static final Logger log = LoggerFactory.getLogger(LegacyUserStorageProvider.class);
+	private static final Logger log = Logger.getLogger(LegacyUserStorageProvider.class);
 
 	private KeycloakSession session;
-
 	private ComponentModel model;
 	
 
@@ -46,131 +58,95 @@ public class LegacyUserStorageProvider
 	}
 
 	@Override
-	public int getUsersCount(RealmModel realm) {
-		log.info("getUsersCount: realm={}", realm.getName());
-		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
-			Statement st = c.createStatement();
-			st.execute("select count(*) from users");
-			ResultSet rs = st.getResultSet();
-			rs.next();
-			
-			return rs.getInt(1);
-		} catch (SQLException ex) {
-			throw new RuntimeException("Database error:" + ex.getMessage(), ex);
-		}
-	}
-
-	@Override
-	public List<UserModel> getUsers(RealmModel realm) {
-		return getUsers(realm, 0, 1000);
-	}
-
-	@Override
-	public List<UserModel> getUsers(RealmModel realm, int firstResult, int maxResults) {
-		log.info("getUsers: realm={}", realm.getName());
-
-		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
-			PreparedStatement st = c.prepareStatement(
-					"select username, firstName,lastName, email, birthDate from users order by username limit ? offset ?");
-			st.setInt(1, maxResults);
-			st.setInt(2, firstResult);
-			st.execute();
-			ResultSet rs = st.getResultSet();
-			List<UserModel> users = new ArrayList<>();
-			while (rs.next()) {
-				users.add(mapUser(realm, rs));
-			}
-			return users;
-		} catch (SQLException ex) {
-			throw new RuntimeException("Database error:" + ex.getMessage(), ex);
-		}
-	}
-
-	@Override
-	public List<UserModel> searchForUser(String search, RealmModel realm) {
-		return searchForUser(search, realm, 0, 1000);
-	}
-
-	@Override
-	public List<UserModel> searchForUser(String search, RealmModel realm, int firstResult, int maxResults) {
-		log.info("searchForUser: realm={}", realm.getName());
-
-		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
-			PreparedStatement st = c.prepareStatement(
-					"select username, firstName,lastName, email, birthDate from users where username like ? order by username limit ? offset ?");
-			st.setString(1, search);
-			st.setInt(2, maxResults);
-			st.setInt(3, firstResult);
-			st.execute();
-			ResultSet rs = st.getResultSet();
-			List<UserModel> users = new ArrayList<>();
-			while (rs.next()) {
-				users.add(mapUser(realm, rs));
-			}
-			return users;
-		} catch (SQLException ex) {
-			throw new RuntimeException("Database error:" + ex.getMessage(), ex);
-		}
-	}
-
-	@Override
-	public List<UserModel> searchForUser(Map<String, String> params, RealmModel realm) {
-		return searchForUser(params, realm, 0, 1000);
-	}
-
-	@Override
-	public List<UserModel> searchForUser(Map<String, String> params, RealmModel realm, int firstResult,
-			int maxResults) {
-		return getUsers(realm, firstResult, maxResults);
-	}
-
-	@Override
-	public List<UserModel> getGroupMembers(RealmModel realm, GroupModel group) {
-		 return Collections.emptyList();
-	}
-
-	@Override
-	public List<UserModel> getGroupMembers(RealmModel realm, GroupModel group, int firstResult, int maxResults) {
-		 return Collections.emptyList();
-	}
-
-	@Override
-	public List<UserModel> searchForUserByUserAttribute(String attrName, String attrValue, RealmModel realm) {
-		 return Collections.emptyList();
-	}
-
-	@Override
 	public boolean supportsCredentialType(String credentialType) {
-		log.info("supportsCredentialType({})", credentialType);
+		log.info("supportsCredentialType "+ credentialType);
 		return PasswordCredentialModel.TYPE.endsWith(credentialType);
 	}
 
 	@Override
 	public boolean isConfiguredFor(RealmModel realm, UserModel user, String credentialType) {
-		log.info("isConfiguredFor(realm={},user={},credentialType={})", realm.getName(), user.getUsername(),
+		// Convert log to use jboss logger
+		log.info("isConfiguredFor: "+ realm.getName() + "  " + user.getUsername() + "  " +
 				credentialType);
 		return supportsCredentialType(credentialType);
 	}
 
 	@Override
 	public boolean isValid(RealmModel realm, UserModel user, CredentialInput credentialInput) {
-		log.info("isValid(realm={},user={},credentialInput.type={})", realm.getName(), user.getUsername(),
+		log.info("isValid: realmName"+ realm.getName() + "  user username" + user.getUsername() + "  credentialInputType" +
 				credentialInput.getType());
+		log.info("isValid password: "+ credentialInput.getChallengeResponse()+ "  supported password: " +
+				this.supportsCredentialType(credentialInput.getType()));
 		if (!this.supportsCredentialType(credentialInput.getType())) {
+			log.info("Invalid credential type: "+ credentialInput.getType());
 			return false;
 		}
 		StorageId sid = new StorageId(user.getId());
-		String username = sid.getExternalId();
-
+		//String username = sid.getExternalId();
+		String username = user.getUsername();
 		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
-			PreparedStatement st = c.prepareStatement("select password from users where username = ?");
+			PreparedStatement st = c.prepareStatement("select password from \"user\" where username = ?");
 			st.setString(1, username);
 			st.execute();
 			ResultSet rs = st.getResultSet();
 			if (rs.next()) {
-				String pwd = rs.getString(1);
-				return pwd.equals(credentialInput.getChallengeResponse());
+				log.info("bcryptCheck: (input, savedPassword)"+ credentialInput.getChallengeResponse()+ rs.getString(1));
+				log.info("bcryptCheckResult: "+ bcryptCheck(credentialInput.getChallengeResponse(), rs.getString(1)));
+				boolean isValid = bcryptCheck(credentialInput.getChallengeResponse(), rs.getString(1));
+				if (!isValid) {
+					log.info("isValid User not valid: "+ username);
+					return isValid;
+				}
+				log.info("isValid User found: "+ username);
+				// Store the user back to Keycloak.
+				UserModel local = UserStoragePrivateUtil.userLocalStorage(session).getUserByUsername(realm, user.getUsername());
+				if (local != null) {
+					log.info("isValid User found in Keycloak: "+ username);
+					log.info("isValid Not importing the new user");
+					return isValid;
+				}
+				log.info("isValid User not found in Keycloak: "+ username);
+				// If user is valid, create the user in Keycloak if they don't exist
+				local = UserStoragePrivateUtil.userLocalStorage(session).addUser(realm, user.getUsername());
+				log.info("isValid User created in Keycloak: "+ username);
+				// local.setFederationLink(model.getId());
+				// Here, you can add logic to create the user in Keycloak
+				local.setEnabled(true); // Enable the user
+				local.setEmail(username); // Set a default email
+				local.setEmailVerified(true);
+				local.setSingleAttribute("legacy_user", "true"); // Add an attribute to mark legacy users
+				PasswordCredentialProvider passwordProvider = (PasswordCredentialProvider) session.getProvider(CredentialProvider.class, "keycloak-password");
+				passwordProvider.createCredential(realm, local, credentialInput.getChallengeResponse());
+				/* 
+				Pbkdf2PasswordHashProvider encoder = new Pbkdf2PasswordHashProvider(
+					Pbkdf2Sha512PasswordHashProviderFactory.ID,
+					Pbkdf2Sha512PasswordHashProviderFactory.PBKDF2_ALGORITHM,
+					Pbkdf2Sha512PasswordHashProviderFactory.DEFAULT_ITERATIONS,
+					512 // Tried setting this to 512, as well, no dice.
+        		);
+				log.info("isValid password: {}", credentialInput.getChallengeResponse());
+				PasswordCredentialModel pcm = encoder.encodedCredential(credentialInput.getChallengeResponse(), Pbkdf2Sha512PasswordHashProviderFactory.DEFAULT_ITERATIONS);
+				
+				Date date = new Date();
+
+				if (!local.credentialManager().isConfiguredFor(credentialInput.getType())) {
+					try {
+						local.credentialManager().createStoredCredential(pcm);
+						log.info("isValid pcm created: {}", pcm);
+						encoder.verify(credentialInput.getChallengeResponse(), pcm);
+						log.info("isValid pcm verified: {}", pcm);
+						log.info("isValid pcm secretData: {}", pcm.getSecretData());
+						log.info("isValid pcm credentialData: {}", pcm.getType());
+						log.info("isValid pcm credentialData: {}", pcm.getCredentialData());
+						pcm.
+					} catch (Exception e) {
+						e.printStackTrace();
+					}
+				}
+				*/
+				return isValid;
 			} else {
+				log.info("isValid User not found: "+ username);
 				return false;
 			}
 		} catch (SQLException ex) {
@@ -179,22 +155,18 @@ public class LegacyUserStorageProvider
 	}
 
 	@Override
-	public UserModel getUserById(String id, RealmModel realm) {
-		log.info("getUserById({})", id);
-		StorageId sid = new StorageId(id);
-		return getUserByUsername(sid.getExternalId(), realm);
-	}
+	public UserModel getUserById(RealmModel realm, String id) {
+		log.info("getUserById()"+ id);
+		String persistenceId = StorageId.externalId(id);
 
-	@Override
-	public UserModel getUserByUsername(String username, RealmModel realm) {
-		log.info("getUserByUsername({})", username);
 		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
 			PreparedStatement st = c.prepareStatement(
-					"select username, firstName, lastName, email, birthDate from users where username = ?");
-			st.setString(1, username);
+					"SELECT id, username, password FROM \"user\" WHERE id = ?");
+			st.setInt(1, Integer.parseInt(persistenceId));
 			st.execute();
 			ResultSet rs = st.getResultSet();
 			if (rs.next()) {
+				log.info("getUserById user:()"+ mapUser(realm, rs));
 				return mapUser(realm, rs);
 			} else {
 				return null;
@@ -205,15 +177,37 @@ public class LegacyUserStorageProvider
 	}
 
 	@Override
-	public UserModel getUserByEmail(String email, RealmModel realm) {
-		log.info("getUserByEmail({})", email);
+	public UserModel getUserByUsername(RealmModel realm, String username) {
+		log.info("getUserByUsername()"+ username);
 		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
 			PreparedStatement st = c.prepareStatement(
-					"select username, firstName,lastName, email, birthDate from users where email = ?");
+					"select id, username, password from \"user\" where username = ?");
+			st.setString(1, username);
+			st.execute();
+			ResultSet rs = st.getResultSet();
+			if (rs.next()) {
+				log.info("getUserByUsername user:()"+ mapUser(realm, rs));
+				return mapUser(realm, rs);
+			} else {
+				return null;
+			}
+		} catch (SQLException ex) {
+			throw new RuntimeException("Database error:" + ex.getMessage(), ex);
+		}
+	}
+
+
+	@Override
+	public UserModel getUserByEmail(RealmModel realm, String email) {
+		log.info("getUserByEmail()"+ email);
+		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
+			PreparedStatement st = c.prepareStatement(
+					"SELECT id, username, password FROM \"user\" WHERE username = ?");
 			st.setString(1, email);
 			st.execute();
 			ResultSet rs = st.getResultSet();
 			if (rs.next()) {
+				log.info("getUserByEmail user:()"+ mapUser(realm, rs));
 				return mapUser(realm, rs);
 			} else {
 				return null;
@@ -224,13 +218,18 @@ public class LegacyUserStorageProvider
 	}
 
 	private UserModel mapUser(RealmModel realm, ResultSet rs) throws SQLException {
-		LegacyUser user = new LegacyUser.Builder(session, realm, model, rs.getString("username"))
-				.email(rs.getString("email"))
-				.firstName(rs.getString("firstName"))
-				.lastName(rs.getString("lastName"))
-				.birthDate(rs.getDate("birthDate"))
-				.build();
+		LegacyUserEntity entity = new LegacyUserEntity();
+		entity.setId(rs.getString(1));
+		entity.setUsername(rs.getString(2));
+		entity.setPassword(rs.getString(3));
+		LegacyUser user = new LegacyUser(session, realm, model, entity);
+
 		return user;
 	}
+
+    private boolean bcryptCheck(String plainPassword, String hashedPassword) {
+		BCrypt.Result result = BCrypt.verifyer().verify(plainPassword.toCharArray(), hashedPassword);
+        return result.verified;
+    }
 
 }
