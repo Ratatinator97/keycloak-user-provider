@@ -1,6 +1,8 @@
 # Keycloak SPI example
 An example of implementing a Service Provider Interface (SPI) for Keycloak.
 
+Compatible and tested with Keycloak 22.0.1
+
 When legacy systems are involved, it is a common requirement to integrate users from those systems. To facilitate this integration, Keycloak supports something called _custom providers_. This particular example illustrates how to build a SPI that integrates a legacy database into Keycloak.
 
 This provider creates a new Keycloak user when a unknown user is logged with the external provider. Thus, it will only use the new Keycloak user.
