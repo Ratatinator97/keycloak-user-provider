@@ -178,15 +178,15 @@ public class LegacyUserStorageProvider
 
 	@Override
 	public UserModel getUserByUsername(RealmModel realm, String username) {
-		log.info("getUserByUsername()"+ username);
+		log.info("getUserByUsername()" + username);
 		try (Connection c = LegacyDBConnection.getConnection(this.model)) {
 			PreparedStatement st = c.prepareStatement(
-					"select id, username, password from \"user\" where username = ?");
-			st.setString(1, username);
+					"SELECT id, username, password FROM \"user\" WHERE LOWER(username) = ?");
+			st.setString(1, username.toLowerCase());
 			st.execute();
 			ResultSet rs = st.getResultSet();
 			if (rs.next()) {
-				log.info("getUserByUsername user:()"+ mapUser(realm, rs));
+				log.info("getUserByUsername user:()" + mapUser(realm, rs));
 				return mapUser(realm, rs);
 			} else {
 				return null;
